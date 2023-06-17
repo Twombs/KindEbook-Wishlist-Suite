@@ -11,7 +11,7 @@
 ; FUNCTIONS
 ; DropboxGUI(), ImagesGUI(), SettingsGUI(), ViewerGUI()
 ; CheckForAlternateDrive($button), CreateFromImage($input, $output, $img), FindEbookImages(), GetContent(), GetDrives($device)
-; GetImageDetails($picfile), GetMappedImage($prior, $next, $entries), LoadTheList()
+; GetImageDetails($picfile), GetMappedImage($prior, $next, $entries), GetOthers(), LoadTheList()
 ; _UserFunc($entries, $rows)
 
 #include <Constants.au3>
@@ -43,10 +43,10 @@ Global $ans, $altfold, $author, $blackjpg, $button, $continue, $covers, $detail,
 Global $Dropbox, $e, $ebooks, $emptyfle, $entries, $entry, $ents, $file, $filelist, $foldtxt, $high1, $high2, $high3, $icoC
 Global $icoD, $icoF, $icoI, $icoO, $icoR, $icoS, $icoT, $icoX, $idx, $image1, $image2, $image3, $imageID, $images, $img
 Global $imgfold, $imghigh, $imgwidth, $inifle, $input, $logfile, $lowid, $mapfile, $missfle, $OptionsGUI, $output, $picfile
-Global $placebo, $placetxt, $psize, $recfile, $resfile, $ResultsGUI, $rows, $shell, $show, $sort, $sqlfile, $sqlite, $title
-Global $update, $updated, $use, $user32, $val, $version, $wide1, $wide2, $wide3
+Global $placebo, $placetxt, $psize, $recfile, $resfile, $ResultsGUI, $rows, $shell, $sort, $sqlfile, $sqlite, $title, $update
+Global $updated, $use, $user32, $val, $version, $wide1, $wide2, $wide3
 
-Global $item1, $item3, $item4, $items, $lastID, $next, $pic_eight, $pic_five, $pic_four, $pic_nine, $pic_one, $pic_seven
+Global $item1, $item3, $item4, $items, $lastID, $mapini, $next, $others, $pic_eight, $pic_five, $pic_four, $pic_nine, $pic_one, $pic_seven
 Global $pic_six, $pic_three, $pic_two, $prior, $row
 
 $blackjpg = @ScriptDir & "\Black.jpg"
@@ -57,7 +57,9 @@ $foldtxt = @ScriptDir & "\Folders.txt"
 $inifle = @ScriptDir & "\Settings.ini"
 $logfile = @ScriptDir & "\Log.txt"
 $mapfile = @ScriptDir & "\Mapped.txt"
+$mapini = @ScriptDir & "\Mapped.ini"
 $missfle = @ScriptDir & "\Missing.txt"
+$others = @ScriptDir & "\Others.ini"
 $placebo = @ScriptDir & "\Ebook Covers\Placebo"
 $placetxt = @ScriptDir & "\Placebo.txt"
 $recfile = @ScriptDir & "\Record.ini"
@@ -360,14 +362,16 @@ Func DropboxGUI()
 EndFunc ;=> DropboxGUI
 
 Func ImagesGUI($entries)
-	Local $Button_info, $Button_next, $Button_prior, $Button_quit, $Group_detail, $Group_images, $Input_author
-	Local $Input_ID, $Input_title, $Label_author, $Label_ID, $Label_title, $Pic_1, $Pic_2, $Pic_3, $Pic_4, $Pic_5
-	Local $Pic_6, $Pic_7, $Pic_8, $Pic_9
+	Local $Button_info, $Button_next, $Button_prior, $Button_quit, $Checkbox_preview, $Group_detail, $Group_images
+	Local $Input_author, $Input_ID, $Input_on, $Input_owned, $Input_subs, $Input_title, $Label_author, $Label_ID
+	Local $Label_on, $Label_owned, $Label_subs, $Label_title, $Pic_1, $Pic_2, $Pic_3, $Pic_4, $Pic_5, $Pic_6, $Pic_7
+	Local $Pic_8, $Pic_9
 	;
-	Local $dll, $MappedGUI, $mpos, $preview, $style, $xpos, $ypos
+	Local $dll, $MappedGUI, $mpos, $ondevice, $owned, $part, $preview, $show, $size, $style, $sub, $xpos, $ypos
 	;
-	$style = BitOR($WS_OVERLAPPED, $WS_CAPTION, $WS_SYSMENU, $WS_VISIBLE, $WS_CLIPSIBLINGS, $WS_MINIMIZEBOX)
-	$MappedGUI = GuiCreate("Mapped Images Viewer", 360, 640, -1, -1, $style, $WS_EX_TOPMOST, $OptionsGUI)
+	SplashTextOn("", "Please Wait!", 200, 100, -1, -1, 33)
+	$style = BitOR($WS_OVERLAPPED, $WS_CAPTION, $WS_SYSMENU, $WS_CLIPSIBLINGS, $WS_MINIMIZEBOX) ;, $WS_VISIBLE
+	$MappedGUI = GuiCreate("Mapped Images Viewer", 360, 665, -1, -1, $style, $WS_EX_TOPMOST, $OptionsGUI)
 	GUISetBkColor($COLOR_SKYBLUE, $MappedGUI)
 	;
 	; CONTROLS
@@ -391,7 +395,7 @@ Func ImagesGUI($entries)
 	$Pic_9 = GUICtrlCreatePic($pic_nine, 240, 322, 100, 136, $SS_NOTIFY)
 	GUICtrlSetTip($Pic_9, "Click to see selected cover full size!")
 	;
-	$Group_detail = GuiCtrlCreateGroup("Clicked Image Detail", 10, 478, 340, 100)
+	$Group_detail = GuiCtrlCreateGroup("Clicked Image Detail", 10, 478, 340, 125)
 	$Label_ID = GUICtrlCreateLabel("Image ID", 20, 498, 68, 20, $SS_CENTER + $SS_CENTERIMAGE + $SS_SUNKEN)
 	GUICtrlSetFont($Label_ID, 7, 600, 0, "Small Fonts")
 	GUICtrlSetBkColor($Label_ID, $COLOR_BLACK)
@@ -410,22 +414,43 @@ Func ImagesGUI($entries)
 	GUICtrlSetColor($Label_title, $COLOR_WHITE)
 	$Input_title = GUICtrlCreateInput("", 70, 548, 270, 20)
 	GUICtrlSetTip($Input_title, "Selected ebook title!")
+	$Label_on = GUICtrlCreateLabel("DEVICE", 20, 573, 60, 20, $SS_CENTER + $SS_CENTERIMAGE + $SS_SUNKEN)
+	GUICtrlSetFont($Label_on, 7, 600, 0, "Small Fonts")
+	GUICtrlSetBkColor($Label_on, $COLOR_RED)
+	GUICtrlSetColor($Label_on, $COLOR_WHITE)
+	$Input_on = GUICtrlCreateInput("", 80, 573, 35, 20, $ES_CENTER)
+	GUICtrlSetTip($Input_on, "On the device status!")
+	$Label_owned = GUICtrlCreateLabel("OWNED", 125, 573, 60, 20, $SS_CENTER + $SS_CENTERIMAGE + $SS_SUNKEN)
+	GUICtrlSetFont($Label_owned, 7, 600, 0, "Small Fonts")
+	GUICtrlSetBkColor($Label_owned, $COLOR_GREEN)
+	GUICtrlSetColor($Label_owned, $COLOR_WHITE)
+	$Input_owned = GUICtrlCreateInput("", 185, 573, 35, 20, $ES_CENTER)
+	GUICtrlSetTip($Input_owned, "Owned status!")
+	$Label_subs = GUICtrlCreateLabel("SUBS", 230, 573, 50, 20, $SS_CENTER + $SS_CENTERIMAGE + $SS_SUNKEN)
+	GUICtrlSetFont($Label_subs, 7, 600, 0, "Small Fonts")
+	GUICtrlSetBkColor($Label_subs, $COLOR_BLUE)
+	GUICtrlSetColor($Label_subs, $COLOR_WHITE)
+	$Input_subs = GUICtrlCreateInput("", 280, 573, 60, 20, $ES_CENTER)
+	GUICtrlSetTip($Input_subs, "Sub-folder numbers!")
 	;
-	$Button_prior = GuiCtrlCreateButton("RESTART", 10, 585, 90, 50)
-	GUICtrlSetFont($Button_prior, 9, 600)
+	$Button_prior = GuiCtrlCreateButton("RESTART", 10, 610, 90, 27)
+	GUICtrlSetFont($Button_prior, 8, 600)
 	GUICtrlSetTip($Button_prior, "Restart from the first lot of images!")
 	;
-	$Button_next = GuiCtrlCreateButton("NEXT", 110, 585, 60, 50)
+	$Checkbox_preview = GUICtrlCreateCheckbox("Preview Image", 12, 640, 90, 20)
+	GUICtrlSetTip($Checkbox_preview, "Show larger image preview!")
+	;
+	$Button_next = GuiCtrlCreateButton("NEXT", 110, 610, 60, 50)
 	GUICtrlSetFont($Button_next, 9, 600)
 	GUICtrlSetTip($Button_next, "View the next lot of images!")
 	;
-	$Button_fold = GuiCtrlCreateButton("D", 180, 585, 50, 50, $BS_ICON)
+	$Button_fold = GuiCtrlCreateButton("D", 180, 610, 50, 50, $BS_ICON)
 	GUICtrlSetTip($Button_fold, "Open the images folder!")
 	;
-	$Button_info = GuiCtrlCreateButton("Info", 240, 585, 50, 50, $BS_ICON)
+	$Button_info = GuiCtrlCreateButton("Info", 240, 610, 50, 50, $BS_ICON)
 	GUICtrlSetTip($Button_info, "Viewer Information!")
 	;
-	$Button_quit = GuiCtrlCreateButton("EXIT", 300, 585, 50, 50, $BS_ICON)
+	$Button_quit = GuiCtrlCreateButton("EXIT", 300, 610, 50, 50, $BS_ICON)
 	GUICtrlSetTip($Button_quit, "Exit / Close / Quit the window!")
 	;
 	; SETTINGS
@@ -433,7 +458,17 @@ Func ImagesGUI($entries)
 	GUICtrlSetImage($Button_info, $user32, $icoI, 1)
 	GUICtrlSetImage($Button_quit, $user32, $icoX, 1)
 	;
-	GuiSetState()
+	$show = IniRead($inifle, "Larger Preview Image", "show", "")
+	If $show = "" Then
+		$show = 1
+		IniWrite($inifle, "Larger Preview Image", "show", $show)
+	EndIf
+	GUICtrlSetState($Checkbox_preview, $show)
+	;
+	$sub = ""
+
+	SplashOff()
+	GuiSetState(@SW_SHOWNORMAL, $MappedGUI)
 	While 1
 		$msg = GuiGetMsg()
 		Select
@@ -443,6 +478,13 @@ Func ImagesGUI($entries)
 			ExitLoop
 		Case $msg = $Button_prior
 			; View the previous lot of images
+			$sub = ""
+			GUICtrlSetData($Input_ID, "")
+			GUICtrlSetData($Input_author, "")
+			GUICtrlSetData($Input_title, "")
+			GUICtrlSetData($Input_on, "")
+			GUICtrlSetData($Input_owned, "")
+			GUICtrlSetData($Input_subs, "")
 			$row = 0
 			; 1st Image
 			GetMappedImage($pic_nine, $pic_one, $entries)
@@ -473,6 +515,13 @@ Func ImagesGUI($entries)
 			GUICtrlSetImage($Pic_9, $pic_nine)
 		Case $msg = $Button_next
 			; View the next lot of images
+			$sub = ""
+			GUICtrlSetData($Input_ID, "")
+			GUICtrlSetData($Input_author, "")
+			GUICtrlSetData($Input_title, "")
+			GUICtrlSetData($Input_on, "")
+			GUICtrlSetData($Input_owned, "")
+			GUICtrlSetData($Input_subs, "")
 			; 1st Image
 			GetMappedImage($pic_nine, $pic_one, $entries)
 			GUICtrlSetImage($Pic_1, $pic_one)
@@ -502,9 +551,24 @@ Func ImagesGUI($entries)
 			GUICtrlSetImage($Pic_9, $pic_nine)
 		Case $msg = $Button_info
 			; Viewer Information
+			; $mapini
 		Case $msg = $Button_fold
 			; Open the images folder
-			If FileExists($imgfold) Then ShellExecute($imgfold)
+			If FileExists($imgfold) Then
+				If $sub = "" Then
+					ShellExecute($imgfold)
+				Else
+					ShellExecute($imgfold & "\" & $sub)
+				EndIf
+			EndIf
+		Case $msg = $Checkbox_preview
+			; Show larger image preview
+			If GUICtrlRead($Checkbox_preview) = $GUI_CHECKED Then
+				$show = 1
+			Else
+				$show = 4
+			EndIf
+			IniWrite($inifle, "Larger Preview Image", "show", $show)
 		Case $msg = $Pic_1 Or $msg = $Pic_2 Or $msg = $Pic_3 Or $msg = $Pic_4 Or $msg = $Pic_5 _
 			Or $msg = $Pic_6 Or $msg = $Pic_7 Or $msg = $Pic_8 Or $msg = $Pic_9
 			; Full Size Preview
@@ -535,29 +599,53 @@ Func ImagesGUI($entries)
 			$imageID = StringSplit($preview, " - N3_", 1)
 			$imageID = $imageID[1]
 			$imageID = StringSplit($imageID, "\", 1)
-			$imageID = $imageID[$imageID[0]]
+			$part = $imageID[0]
+			$sub = $imageID[$part - 2] & "\" & $imageID[$part - 1]
+			GUICtrlSetData($Input_subs, $sub)
+			$imageID = $imageID[$part]
 			GUICtrlSetData($Input_ID, $imageID)
-			$author = IniRead($resfile, $imageID, "author", "other")
+			;$author = IniRead($resfile, $imageID, "author", "other")
+			$author = IniRead($resfile, $imageID, "author", "")
+			If $author = "" Then
+				$ondevice = "no"
+				$author = IniRead($others, $imageID, "author", "other")
+				$size = IniRead($others, $imageID, "size", "")
+				If $size = 0 Then
+					$owned = "no"
+				Else
+					$owned = "yes"
+				EndIf
+			Else
+				$ondevice = "yes"
+				$owned = "yes"
+			EndIf
 			GUICtrlSetData($Input_author, $author)
-			$title = IniRead($resfile, $imageID, "title", "other")
+			$title = IniRead($resfile, $imageID, "title", "")
+			If $title = "" Then
+				$title = IniRead($others, $imageID, "title", "other")
+			EndIf
 			GUICtrlSetData($Input_title, $title)
+			GUICtrlSetData($Input_on, $ondevice)
+			GUICtrlSetData($Input_owned, $owned)
 			;
-			SplashImageOn("", $preview, 230, 350, Default, Default, 17)
-			Sleep(300)
-			$mpos = MouseGetPos()
-			$xpos = $mpos[0]
-			$ypos = $mpos[1]
-			Sleep(300)
-			$dll = DllOpen("user32.dll")
-			While 1
-				$mpos = MouseGetPos()
-				If $mpos[0] > $xpos + 40 Or $mpos[0] < $xpos - 40 Then ExitLoop
-				If $mpos[1] > $ypos + 40 Or $mpos[1] < $ypos - 40 Then ExitLoop
-				If _IsPressed("01", $dll) Then ExitLoop
+			If $show = 1 Then
+				SplashImageOn("", $preview, 230, 350, Default, Default, 17)
 				Sleep(300)
-			WEnd
-			DllClose($dll)
-			SplashOff()
+				$mpos = MouseGetPos()
+				$xpos = $mpos[0]
+				$ypos = $mpos[1]
+				Sleep(300)
+				$dll = DllOpen("user32.dll")
+				While 1
+					$mpos = MouseGetPos()
+					If $mpos[0] > $xpos + 40 Or $mpos[0] < $xpos - 40 Then ExitLoop
+					If $mpos[1] > $ypos + 40 Or $mpos[1] < $ypos - 40 Then ExitLoop
+					If _IsPressed("01", $dll) Then ExitLoop
+					Sleep(300)
+				WEnd
+				DllClose($dll)
+				SplashOff()
+			EndIf
 			GUICtrlSetState($Button_prior, $GUI_ENABLE)
 			GUICtrlSetState($Button_next, $GUI_ENABLE)
 			GUICtrlSetState($Button_fold, $GUI_ENABLE)
@@ -905,10 +993,12 @@ Func SettingsGUI()
 			Local $hUserFunction = _UserFunc
 			GUISetState(@SW_MINIMIZE, $OptionsGUI)
 			GUISetState(@SW_MINIMIZE, $ResultsGUI)
+			SplashTextOn("", "Please Wait!", 200, 100, -1, -1, 33)
 			_FileReadToArray($mapfile, $array, 1, @TAB)
 			; Need to code some sorting options.
 			_ArraySort($array, 0, 1, 0, 3)
 			;_ArrayColDelete($sorted, 5, False)
+			SplashOff()
 			_ArrayDisplay($array, "Mapped Content", "", 0, @TAB, "Subs|Image ID|N3|Author & Title", 450, $COLOR_SKYBLUE, $hUserFunction)
 		Case $msg = $Button_show
 			; Show the list of all mapped folder content
@@ -1060,6 +1150,10 @@ Func SettingsGUI()
 					$files &= $entry & @CRLF
 				Next
 				FileWriteLine($mapfile, $files)
+				;
+				If FileExists($sqlfile) Then
+					GetOthers()
+				EndIf
 				SplashOff()
 			EndIf
 		Case $msg = $Button_info
@@ -2409,7 +2503,7 @@ Func ViewerGUI()
 											If $ans = 1 Then
 												_FileWriteLog($logfile, "Creating '" & $image2 & "' on device.")
 												CreateFromImage($covimg, $imgfile, 2)
-												_GUICtrlListView_SetItemText($ListView_ebooks, $ind, $image2, 4)
+												_GUICtrlListView_SetItemText($ListView_ebooks, $ind, $image2, 5)
 												$created = $created + 1
 											Else
 												$skip = $skip + 1
@@ -2426,12 +2520,13 @@ Func ViewerGUI()
 											If $ans = 1 Then
 												_FileWriteLog($logfile, "Creating '" & $image3 & "' on device.")
 												CreateFromImage($covimg, $imgfile, 3)
-												_GUICtrlListView_SetItemText($ListView_ebooks, $ind, $image3, 4)
+												_GUICtrlListView_SetItemText($ListView_ebooks, $ind, $image3, 6)
 												$created = $created + 1
 											Else
 												$skip = $skip + 1
 											EndIf
 											If $created > 0 Then
+												_GUICtrlListView_SetItemText($ListView_ebooks, $ind, $created, 3)
 												$idx = $lowid + $ind
 												GUICtrlSetBkColor($idx, $COLOR_FUCHSIA)
 											EndIf
@@ -3731,6 +3826,75 @@ Func GetMappedImage($prior, $next, $entries)
 		$pic_nine = $pic
 	EndIf
 EndFunc ;==> GetMappedImage
+
+Func GetOthers()
+	Local $array, $dbfle, $found, $ISBN, $line, $sections, $size
+	;
+	_SQLite_Startup()
+	If @error Then
+		SplashOff()
+		_FileWriteLog($logfile, "SQLite3.dll cannot be Loaded.")
+		MsgBox(262192, "SQLite Error", "SQLite3.dll cannot be Loaded!", 0, $Dropbox)
+		Exit
+	EndIf
+	;
+	$dbfle = _SQLite_Open($sqlfile)
+	If @error Then
+		SplashOff()
+		_FileWriteLog($logfile, "Cannot open existing Database file.")
+		MsgBox(262192, "SQLite Error", "Cannot open the existing Database file!", 0, $Dropbox)
+	Else
+		SplashTextOn("", "Retrieving Others", 220, 100, Default, Default, 33)
+		_FileCreate($others)
+		Sleep(1000)
+		;
+		; The following improved code provided by jchd an MVP from the AutoIt Forum, slightly modified by TheSaint.
+        _SQLite_QuerySingleRow( _
+            $dbfle, _
+            "select group_concat(txt, char(13, 10)) || char(13, 10) || 'Total Ebooks = ' || count(*)" & _
+            "       from (select Title || ' | ' || Attribution || ' | ' || ISBN || ' | ' || ImageID || ' | ' || ___FileSize as txt" & _
+            "                    from content where Attribution <> '' and IsDownloaded = 'false' order by Attribution)" & _
+            "       group by 'abc'", _
+            $entries)
+		; and ___FileSize <> '0'
+		;
+		SplashTextOn("", "Writing To File", 220, 100, Default, Default, 33)
+		$entries = $entries[0]
+		$found = 0
+		$sections = ""
+		$array = StringSplit($entries, @CRLF, 1)
+		For $e = 1 To $array[0]
+			$line = $array[$e]
+			If $line = "" Or StringLeft($line, 14) = "Total Ebooks =" Then
+				ExitLoop
+			Else
+				$found = $found + 1
+				$entries = StringSplit($line, " | ", 1)
+				$title = $entries[1]
+				$author = $entries[2]
+				$ISBN = $entries[3]
+				$imageID = $entries[4]
+				$size = $entries[5]
+				$entry = "[" & $imageID & "]" & @CRLF & "title=" & $title & @CRLF & "author=" & $author & @CRLF & "isbn=" & $ISBN & @CRLF & "size=" & $size
+				If $sections = "" Then
+					$sections = $entry
+				Else
+					$sections = $sections & @CRLF & $entry
+				EndIf
+			EndIf
+		Next
+		If $sections <> "" And $found > 0 Then
+			$file = FileOpen($others, 1)
+			FileWriteLine($file, $sections)
+			FileClose($file)
+			$found = 0
+			$section = ""
+		EndIf
+	EndIf
+	;
+	_SQLite_Close($dbfle)
+	_SQLite_Shutdown()
+EndFunc ;==> GetOthers
 
 Func LoadTheList()
 	Local $ind, $num, $numb, $s, $total
